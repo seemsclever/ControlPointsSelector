@@ -136,18 +136,26 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         features = control_points_layer.getFeatures(QgsFeatureRequest().setFilterExpression(expression))
 
         suitable_control_points = []
+        suitable_feature_ids = []  # Список для хранения ID подходящих точек
         for feature in features:
             allowed_wind_directions = feature["windDirections"].split(", ")
             if self.current_wind_direction in allowed_wind_directions:
                 # Формируем строку с информацией о точке
                 point_info = f"Контрольная точка {feature['controlPointNumber']}({feature['numberOfObject']}, {feature['windDirections']})"
                 suitable_control_points.append(point_info)
+                suitable_feature_ids.append(feature.id())  # Добавляем ID подходящей точки
 
         # Обновляем label с информацией о подходящих точках
         if suitable_control_points:
             self.label_controlPoints.setText("Подходящие точки контроля:\n" + "\n".join(suitable_control_points))
         else:
             self.label_controlPoints.setText("Подходящие точки контроля не найдены.")
+
+        # Выделяем подходящие точки на карте
+        if suitable_feature_ids:
+            control_points_layer.selectByIds(suitable_feature_ids)
+        else:
+            control_points_layer.removeSelection()  # Снимаем выделение, если подходящих точек нет
 
         print(suitable_control_points)
 
