@@ -47,6 +47,8 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if not hasattr(self, 'comboBox_objectNumber'):
             raise AttributeError("comboBox_objectNumber not found in the UI")
 
+        self.clearWeatherInfo()
+
         # Настройка comboBox
         self.comboBox_objectNumber.addItem("Выберите объект", None)
         self.comboBox_objectNumber.setCurrentIndex(0)
@@ -54,6 +56,13 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.fillComboBox()
         # Подключаем сигнал изменения текущего элемента comboBox к обработчику
         self.comboBox_objectNumber.currentIndexChanged.connect(self.onComboBoxChanged)
+
+        # Подключаем сигнал изменения текущего элемента comboBox_controlPoints к обработчику
+        self.comboBox_controlPoints.currentIndexChanged.connect(self.onControlPointChanged)
+
+        self.pushButton_controlPointsMinus.clicked.connect(self.decrement_rides_counter)
+        self.pushButton_controlPointsPlus.clicked.connect(self.increment_rides_counter)
+        self.pushButton_controlPointsUpdateValue.clicked.connect(self.update_rides_counter_from_spinbox)
 
     def closeEvent(self, event):
         self.closingPlugin.emit()
@@ -69,6 +78,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def onComboBoxChanged(self, index):
         selected_object_number = self.comboBox_objectNumber.currentText()
+        self.spinBox.setValue(0)
 
         layers = QgsProject.instance().mapLayersByName("Площадки")
         if not layers:
@@ -137,6 +147,8 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
         suitable_control_points = []
         suitable_feature_ids = []  # Список для хранения ID подходящих точек
+        self.comboBox_controlPoints.clear()  # Очищаем comboBox перед добавлением новых элементов
+
         for feature in features:
             allowed_wind_directions = feature["windDirections"].split(", ")
             if self.current_wind_direction in allowed_wind_directions:
@@ -144,6 +156,9 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 point_info = f"Контрольная точка {feature['controlPointNumber']}({feature['numberOfObject']}, {feature['windDirections']})"
                 suitable_control_points.append(point_info)
                 suitable_feature_ids.append(feature.id())  # Добавляем ID подходящей точки
+
+                # Добавляем номер контрольной точки в comboBox
+                self.comboBox_controlPoints.addItem(str(feature['controlPointNumber']), feature.id())
 
         # Обновляем label с информацией о подходящих точках
         if suitable_control_points:
@@ -159,6 +174,99 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
         print(suitable_control_points)
 
+    def onControlPointChanged(self, index):
+        """Обработчик изменения выбранной контрольной точки."""
+        # Получаем ID выбранной контрольной точки
+        feature_id = self.comboBox_controlPoints.currentData()
+        self.spinBox.setValue(0)
+
+        if feature_id is not None:
+            # Получаем слой "Точки контроля"
+            control_points_layer = QgsProject.instance().mapLayersByName("Точки контроля")[0]
+            if not control_points_layer:
+                QtWidgets.QMessageBox.warning(self, "Ошибка", "Слой 'Точки контроля' не найден.")
+                return
+
+            # Получаем feature по ID
+            feature = control_points_layer.getFeature(feature_id)
+            if feature and feature.isValid():
+                # Получаем значение атрибута ridesCounter
+                rides_counter = feature["ridesCounter"]
+                # Обновляем label_pointDescription
+                self.label_pointDescription.setText(f"Количество поездок: {rides_counter}")
+            else:
+                self.label_pointDescription.setText("Информация о точке недоступна.")
+        else:
+            self.label_pointDescription.setText("Выберите контрольную точку.")
+
+    def decrement_rides_counter(self):
+        """Уменьшает ridesCounter на 1 для выбранной точки."""
+        self._update_rides_counter(-1)
+
+    def increment_rides_counter(self):
+        """Увеличивает ridesCounter на 1 для выбранной точки."""
+        self._update_rides_counter(1)
+
+    def _update_rides_counter(self, delta):
+        """Общий метод для изменения ridesCounter."""
+        feature_id = self.comboBox_controlPoints.currentData()
+
+        if feature_id is None:
+            return
+
+        control_points_layer = QgsProject.instance().mapLayersByName("Точки контроля")
+        if not control_points_layer:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Слой 'Точки контроля' не найден.")
+            return
+
+        layer = control_points_layer[0]
+        feature = layer.getFeature(feature_id)
+
+        if not feature.isValid():
+            return
+
+        current_value = feature["ridesCounter"] or 0
+        new_value = max(current_value + delta, 0)  # Не допускаем отрицательные значения
+
+        # Вносим изменения в слой
+        layer.startEditing()
+        layer.changeAttributeValue(feature.id(), layer.fields().lookupField("ridesCounter"), new_value)
+        layer.commitChanges()
+
+        # Обновляем отображение информации
+        self.onControlPointChanged(self.comboBox_controlPoints.currentIndex())
+
+    def update_rides_counter_from_spinbox(self):
+        """Обновляет ridesCounter значением из spinBox."""
+        feature_id = self.comboBox_controlPoints.currentData()
+        new_value = self.spinBox.value()  # Убедитесь, что имя spinBox совпадает в UI
+
+        if feature_id is None:
+            return
+
+        if new_value < 0:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Значение не может быть отрицательным.")
+            return
+
+        control_points_layer = QgsProject.instance().mapLayersByName("Точки контроля")
+        if not control_points_layer:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Слой 'Точки контроля' не найден.")
+            return
+
+        layer = control_points_layer[0]
+        feature = layer.getFeature(feature_id)
+
+        if not feature.isValid():
+            return
+
+        # Вносим изменения
+        layer.startEditing()
+        layer.changeAttributeValue(feature.id(), layer.fields().lookupField("ridesCounter"), new_value)
+        layer.commitChanges()
+
+        # Обновляем отображение
+        self.onControlPointChanged(self.comboBox_controlPoints.currentIndex())
+
     def getWindDirection(self, degree):
         directions = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ']
         idx = int((degree + 22.5) // 45) % 8
@@ -166,9 +274,9 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def clearWeatherInfo(self):
         """Очищает информацию о погоде при ошибках или отсутствии выбора."""
-        self.label_temperature_OWM.setText("Температура: -")
-        self.label_windSpeed_OWM.setText("Скорость ветра: -")
-        self.label_windDirection_OWM.setText("Направление ветра: -")
+        self.label_weather_OWM.setText("Выберите объект для отображения погоды")
+        self.label_controlPoints.setText("Выберите объект для отображения контрольных точек")
+        self.label_pointDescription.setText("Выберите контрольную точку")
 
     def convert_coordinates(self, x, y, source_crs_epsg, target_crs_epsg):
         """
