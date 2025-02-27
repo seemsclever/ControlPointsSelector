@@ -27,7 +27,8 @@ import requests
 
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
-from qgis.core import QgsProject, QgsFeatureRequest, QgsMapLayer, QgsFeature, QgsGeometry, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsPointXY
+from qgis.core import QgsProject, QgsFeatureRequest, QgsMapLayer, QgsFeature, QgsGeometry, QgsCoordinateReferenceSystem, \
+    QgsCoordinateTransform, QgsPointXY, QgsRectangle
 from qgis.gui import QgsMapToolPan
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -47,7 +48,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if not hasattr(self, 'comboBox_objectNumber'):
             raise AttributeError("comboBox_objectNumber not found in the UI")
 
-        self.clearWeatherInfo()
+        self.clearWeather()
 
         # Настройка comboBox
         self.comboBox_objectNumber.addItem("Выберите объект", None)
@@ -92,16 +93,27 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         feature = next(layer.getFeatures(request), None)
 
         if feature and feature.isValid():
-            self.iface.mapCanvas().setExtent(feature.geometry().boundingBox())
+            # Получаем bounding box объекта
+            bbox = feature.geometry().boundingBox()
+
+            # Расширяем bounding box на 10%
+            expanded_bbox = self.expand_bounding_box(bbox, 0.1)
+
+            # Устанавливаем расширенный bounding box в качестве экстента карты
+            self.iface.mapCanvas().setExtent(expanded_bbox)
             self.iface.mapCanvas().refresh()
             layer.selectByIds([feature.id()])
 
             centroid = feature.geometry().centroid().asPoint()
             latitude, longitude = self.convert_coordinates(centroid.x(), centroid.y(), "EPSG:3857", "EPSG:4326")
 
+            # Отображаем атрибут name в label_nameOfObject
+            name = feature["name"]  # Получаем значение атрибута name
+            self.label_nameOfObject.setText(name)  # Устанавливаем текст в label_nameOfObject
+
             self.getWeatherDataFromOWM(latitude, longitude)
         else:
-            self.clearWeatherInfo()
+            self.clearWeather()
 
     def getWeatherDataFromOWM(self, lat, lon):
         api_key = '9834faa608479f5b1145b430a7981504'
@@ -115,7 +127,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
                 temperature = data['main']['temp']
                 wind_speed = data['wind']['speed']
-                wind_direction = self.getWindDirection(data['wind']['deg'])
+                wind_direction = self.getWindDirection(data['wind']['deg'], wind_speed)
 
                 # Формируем строку с информацией о погоде
                 weather_info = f"Температура: {temperature}°C\nСкорость ветра: {wind_speed} м/с\nНаправление ветра: {wind_direction}"
@@ -128,7 +140,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 self.getControlPointsForObject()
 
             else:
-                self.clearWeatherInfo()
+                self.clearWeather()
                 self.label_weather_OWM.setText("Ошибка получения данных о погоде.")
         except Exception as e:
             print(f"Ошибка: {str(e)}")
@@ -145,20 +157,27 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         expression = f"numberOfObject = '{selected_object_number}'"
         features = control_points_layer.getFeatures(QgsFeatureRequest().setFilterExpression(expression))
 
-        suitable_control_points = []
+        all_control_points = []  # Список для хранения всех точек
+        suitable_control_points = []  # Список для хранения подходящих точек
+        all_feature_ids = []  # Список для хранения ID всех точек
         suitable_feature_ids = []  # Список для хранения ID подходящих точек
+
         self.comboBox_controlPoints.clear()  # Очищаем comboBox перед добавлением новых элементов
 
         for feature in features:
-            allowed_wind_directions = feature["windDirections"].split(", ")
-            if self.current_wind_direction in allowed_wind_directions:
-                # Формируем строку с информацией о точке
-                point_info = f"Контрольная точка {feature['controlPointNumber']}({feature['numberOfObject']}, {feature['windDirections']})"
-                suitable_control_points.append(point_info)
-                suitable_feature_ids.append(feature.id())  # Добавляем ID подходящей точки
+            # Добавляем все точки в comboBox
+            point_info = f"Контрольная точка {feature['controlPointNumber']}({feature['numberOfObject']}, {feature['windDirections']})"
+            all_control_points.append(point_info)
+            all_feature_ids.append(feature.id())
 
-                # Добавляем номер контрольной точки в comboBox
-                self.comboBox_controlPoints.addItem(str(feature['controlPointNumber']), feature.id())
+            # Добавляем номер контрольной точки в comboBox
+            self.comboBox_controlPoints.addItem(str(feature['controlPointNumber']), feature.id())
+
+            # Проверяем, подходит ли точка под текущее направление ветра
+            allowed_wind_directions = feature["windDirections"].split(", ")
+            if self.current_wind_direction == "штиль" or self.current_wind_direction in allowed_wind_directions:
+                suitable_control_points.append(point_info)
+                suitable_feature_ids.append(feature.id())
 
         # Обновляем label с информацией о подходящих точках
         if suitable_control_points:
@@ -170,9 +189,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if suitable_feature_ids:
             control_points_layer.selectByIds(suitable_feature_ids)
         else:
-            control_points_layer.removeSelection()  # Снимаем выделение, если подходящих точек нет
-
-        print(suitable_control_points)
+            control_points_layer.removeSelection()
 
     def onControlPointChanged(self, index):
         """Обработчик изменения выбранной контрольной точки."""
@@ -267,16 +284,26 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # Обновляем отображение
         self.onControlPointChanged(self.comboBox_controlPoints.currentIndex())
 
-    def getWindDirection(self, degree):
+    def getWindDirection(self, degree, wind_speed):
+        """
+        Возвращает направление ветра или "штиль", если скорость ветра меньше 1 м/с.
+
+        :param degree: Направление ветра в градусах (0-360).
+        :param wind_speed: Скорость ветра в м/с.
+        :return: Направление ветра или "штиль".
+        """
+        if wind_speed < 1.5:
+            return "штиль"
         directions = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ']
         idx = int((degree + 22.5) // 45) % 8
         return directions[idx]
 
-    def clearWeatherInfo(self):
+    def clearWeather(self):
         """Очищает информацию о погоде при ошибках или отсутствии выбора."""
-        self.label_weather_OWM.setText("Выберите объект для отображения погоды")
-        self.label_controlPoints.setText("Выберите объект для отображения контрольных точек")
+        self.label_weather_OWM.setText("Выберите площадку для отображения погоды")
+        self.label_controlPoints.setText("Выберите площадку для отображения контрольных точек")
         self.label_pointDescription.setText("Выберите контрольную точку")
+        self.label_nameOfObject.setText("Выберите площадку в списке")
 
     def convert_coordinates(self, x, y, source_crs_epsg, target_crs_epsg):
         """
@@ -301,3 +328,28 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
         # Возвращаем преобразованные координаты
         return transformed_point.y(), transformed_point.x()  # Возвращаем широту и долготу
+
+    def expand_bounding_box(self, bbox, percentage=0.1):
+        """
+        Расширяет bounding box на указанный процент.
+
+        :param bbox: Исходный bounding box (QgsRectangle)
+        :param percentage: Процент расширения (по умолчанию 10%)
+        :return: Расширенный bounding box (QgsRectangle)
+        """
+        width = bbox.width()
+        height = bbox.height()
+
+        # Вычисляем расширение по ширине и высоте
+        expand_width = width * percentage
+        expand_height = height * percentage
+
+        # Расширяем bounding box
+        expanded_bbox = QgsRectangle(
+            bbox.xMinimum() - expand_width,
+            bbox.yMinimum() - expand_height,
+            bbox.xMaximum() + expand_width,
+            bbox.yMaximum() + expand_height
+        )
+
+        return expanded_bbox
