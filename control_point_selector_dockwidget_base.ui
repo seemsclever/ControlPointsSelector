@@ -16,7 +16,7 @@
   <property name="minimumSize">
    <size>
     <width>288</width>
-    <height>375</height>
+    <height>437</height>
    </size>
   </property>
   <property name="maximumSize">
@@ -156,6 +156,26 @@
          </size>
         </property>
        </spacer>
+      </item>
+      <item row="12" column="1">
+       <spacer name="horizontalSpacer_2">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="13" column="1">
+       <widget class="QPushButton" name="pushButton_download">
+        <property name="text">
+         <string>Выгрузить все подходящие точки в Excel</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </item>

@@ -30,6 +30,8 @@ from qgis.PyQt.QtCore import pyqtSignal
 from qgis.core import QgsProject, QgsFeatureRequest, QgsMapLayer, QgsFeature, QgsGeometry, QgsCoordinateReferenceSystem, \
     QgsCoordinateTransform, QgsPointXY, QgsRectangle
 from qgis.gui import QgsMapToolPan
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'control_point_selector_dockwidget_base.ui'))
@@ -43,6 +45,9 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         super(ControlPointsSelectorDockWidget, self).__init__(parent)
         self.iface = iface  # Сохраняем ссылку на iface
         self.setupUi(self)
+
+        # Инициализация атрибута для хранения текущего направления ветра
+        self.current_wind_direction = None  # Добавьте эту строку
 
         # Проверка наличия необходимых элементов UI
         if not hasattr(self, 'comboBox_objectNumber'):
@@ -64,6 +69,9 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.pushButton_controlPointsMinus.clicked.connect(self.decrement_rides_counter)
         self.pushButton_controlPointsPlus.clicked.connect(self.increment_rides_counter)
         self.pushButton_controlPointsUpdateValue.clicked.connect(self.update_rides_counter_from_spinbox)
+
+        # Подключаем кнопку выгрузки в Excel
+        self.pushButton_download.clicked.connect(self.export_suitable_points_to_excel)
 
     def closeEvent(self, event):
         self.closingPlugin.emit()
@@ -133,8 +141,8 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 weather_info = f"Температура: {temperature}°C\nСкорость ветра: {wind_speed} м/с\nНаправление ветра: {wind_direction}"
                 self.label_weather_OWM.setText(weather_info)
 
-                # Получаем направление ветра из API
-                self.current_wind_direction = wind_direction
+                # Обновляем атрибут текущего направления ветра
+                self.current_wind_direction = wind_direction  # Добавьте эту строку
 
                 # Получаем точки контроля для выбранного объекта
                 self.getControlPointsForObject()
@@ -181,7 +189,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
         # Обновляем label с информацией о подходящих точках
         if suitable_control_points:
-            self.label_controlPoints.setText("Подходящие точки контроля:\n" + "\n".join(suitable_control_points))
+            self.label_controlPoints.setText("Подходящие точки контроля для данного объекта:\n" + "\n".join(suitable_control_points))
         else:
             self.label_controlPoints.setText("Подходящие точки контроля не найдены.")
 
@@ -353,3 +361,61 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         )
 
         return expanded_bbox
+
+    def export_suitable_points_to_excel(self):
+        """Экспортирует все подходящие точки контроля в Excel файл."""
+        # Получаем текущее направление ветра
+        current_wind_direction = self.current_wind_direction  # Исправлено
+
+        # Если направление ветра не определено, выводим сообщение об ошибке
+        if current_wind_direction is None:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Не удалось определить текущее направление ветра.")
+            return
+
+        # Получаем слои "Площадки" и "Точки контроля"
+        sites_layer = QgsProject.instance().mapLayersByName("Площадки")[0]
+        control_points_layer = QgsProject.instance().mapLayersByName("Точки контроля")[0]
+
+        if not sites_layer or not control_points_layer:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Не удалось найти слои 'Площадки' или 'Точки контроля'.")
+            return
+
+        # Создаем новый Excel файл
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Подходящие точки контроля"
+
+        # Заголовки столбцов
+        headers = ["Объект", "Контрольная точка", "Направления ветра", "Количество поездок",
+                   "Текущее направление ветра"]
+        ws.append(headers)
+
+        # Форматируем заголовки
+        for col in ws.iter_cols(1, len(headers)):
+            col[0].font = Font(bold=True)
+
+        # Проходим по всем объектам
+        for site_feature in sites_layer.getFeatures():
+            site_number = site_feature["objectNumber"]
+
+            # Проходим по всем точкам контроля для текущего объекта
+            expression = f"numberOfObject = '{site_number}'"
+            for point_feature in control_points_layer.getFeatures(QgsFeatureRequest().setFilterExpression(expression)):
+                allowed_wind_directions = point_feature["windDirections"].split(", ")
+
+                # Проверяем, подходит ли точка под текущее направление ветра
+                if current_wind_direction == "штиль" or current_wind_direction in allowed_wind_directions:
+                    # Добавляем строку в Excel
+                    ws.append([
+                        site_number,
+                        point_feature["controlPointNumber"],
+                        point_feature["windDirections"],
+                        point_feature["ridesCounter"],
+                        current_wind_direction
+                    ])
+
+        # Сохраняем файл
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить файл", "", "Excel Files (*.xlsx)")
+        if file_path:
+            wb.save(file_path)
+            QtWidgets.QMessageBox.information(self, "Успех", f"Файл успешно сохранен: {file_path}")
