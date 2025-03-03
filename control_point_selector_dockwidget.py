@@ -300,7 +300,7 @@ class ControlPointsSelectorDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         :param wind_speed: Скорость ветра в м/с.
         :return: Направление ветра или "штиль".
         """
-        if wind_speed < 1.5:
+        if wind_speed < 0.5:
             return "штиль"
         directions = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ']
         idx = int((degree + 22.5) // 45) % 8
