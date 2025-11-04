@@ -1,1 +1,51 @@
-
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ControlPointsSelector — README</title>
+  <style>
+    :root{
+      --bg:#0f172a; --card:#111827; --ink:#e5e7eb; --muted:#9ca3af;
+      --brand:#60a5fa; --accent:#34d399; --code:#0b1020; --border:#1f2937;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:32px 20px; color:var(--ink); background:linear-gradient(180deg,#0b1224, #0f172a);
+      font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+    }
+    .container{max-width:900px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+    h1,h2,h3{line-height:1.2;margin:0 0 12px}
+    h1{font-size:28px}
+    h2{font-size:22px;margin-top:28px;border-left:4px solid var(--brand);padding-left:10px}
+    h3{font-size:18px;margin-top:22px}
+    p{margin:0 0 12px}
+    ul,ol{margin:0 0 14px 22px}
+    code,kbd,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    pre{background:var(--code); padding:14px;border-radius:10px;overflow:auto;border:1px solid #0f1a36}
+    code{background:#0b1020;padding:.2em .42em;border-radius:6px;border:1px solid #0f1a36}
+    .tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 18px}
+    .tag{font-size:12px;border:1px solid var(--border);padding:6px 10px;border-radius:999px;background:#0c1328;color:var(--muted)}
+    .kbd{background:#0b1020;border:1px solid #16203e;padding:.15em .5em;border-radius:6px}
+    table{width:100%;border-collapse:collapse;margin:10px 0 16px;border:1px solid var(--border)}
+    th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+    th{color:#cbd5e1;background:#0e152b}
+    .note{border-left:3px solid var(--accent);background:#072016;padding:12px;border-radius:8px;margin:10px 0 16px}
+    .small{color:var(--muted);font-size:14px}
+    a{color:var(--brand);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .hr{height:1px;background:var(--border);margin:22px 0}
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>ControlPointsSelector (плагин QGIS)</h1>
+    <p class="small">Инструмент для выбора точек контроля отбора проб по направлению ветра и текущей погоде. Интерфейс — док-панель в QGIS 3.x.</p>
+    <div class="tags">
+      <span class="tag">QGIS 3.x</span>
+      <span class="tag">OpenWeatherMap</span>
+      <span class="tag">Python</span>
+      <span class="tag">requests</span>
+      <span class="tag">openpyxl</span>
+      <span class="tag">Excel экспорт</span>
+    </div>
